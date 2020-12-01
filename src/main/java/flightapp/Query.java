@@ -291,6 +291,7 @@ public class Query {
         // Check if user is registered
         if (!resultSet.next()) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "Login failed\n";
         }
 
@@ -318,16 +319,19 @@ public class Query {
         if (Arrays.equals(userHash, hash)) {
           this.username = username;
           conn.commit();
+          conn.setAutoCommit(true);
           return "Logged in as " + username + "\n";
         } else {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "Login failed\n";
         }
       } catch (SQLException e) {
         try {
+          conn.rollback();
+          conn.setAutoCommit(true);
           // If the error is deadlock, then call this method recursively
           if (isDeadLock(e)) {
-            conn.rollback();
             return transaction_login(username, password);
           }
         } catch (SQLException ex) {
@@ -406,12 +410,14 @@ public class Query {
       createUserStatement.setInt(4, initAmount);
       createUserStatement.executeUpdate();
       conn.commit();
+      conn.setAutoCommit(true);
       return "Created user " + username + "\n";
     } catch (SQLException e) {
       try {
+        conn.rollback();
+        conn.setAutoCommit(true);
         // If the error is deadlock, then call this method recursively
         if (isDeadLock(e)) {
-          conn.rollback();
           return transaction_createCustomer(username, password, initAmount);
         }
       } catch (SQLException ex) {
@@ -502,6 +508,7 @@ public class Query {
         // Check if we couldn't find any flights
         if (directFlight && count == 0) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "No flights match your selection\n";
         }
 
@@ -565,17 +572,19 @@ public class Query {
           sb.append(itinerary.toString());
         }
         conn.commit();
+        conn.setAutoCommit(true);
         return sb.toString();
 
       } catch (SQLException e) {
         try {
+          conn.rollback();
+          conn.setAutoCommit(true);
           // If the error is deadlock, then call this method recursively
           if (isDeadLock(e)){
-            conn.rollback();
             return transaction_search(originCity, destinationCity, directFlight,
                     dayOfMonth, numberOfItineraries);
           }
-        } catch (SQLException ex){
+        } catch (SQLException ex) {
           ex.printStackTrace();
         }
         e.printStackTrace();
@@ -631,6 +640,7 @@ public class Query {
         capacityResultSet.next();
         if (checkFlightCapacity(bookItinerary.f1.fid) - capacityResultSet.getInt("count") <= 0) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "Booking failed\n";
         }
         capacityResultSet.close();
@@ -643,6 +653,7 @@ public class Query {
           capacityResultSet.next();
           if (checkFlightCapacity(bookItinerary.f2.fid) - capacityResultSet.getInt("count") <= 0) {
             conn.rollback();
+            conn.setAutoCommit(true);
             return "Booking failed\n";
           }
           capacityResultSet.close();
@@ -656,6 +667,7 @@ public class Query {
         sameDayResultSet.next();
         if (sameDayResultSet.getInt("count") > 0) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "You cannot book two flights in the same day\n";
         }
         sameDayResultSet.close();
@@ -685,16 +697,18 @@ public class Query {
         bookFlightStatement.setInt(8,price);
         bookFlightStatement.executeUpdate();
         conn.commit();
+        conn.setAutoCommit(true);
         return "Booked flight(s), reservation ID: " + reservationID + "\n";
 
       } catch (SQLException e) {
         try {
+          conn.rollback();
+          conn.setAutoCommit(true);
           // If the error is deadlock, then call this method recursively
           if (isDeadLock(e)){
-            conn.rollback();
             return transaction_book(itineraryId);
           }
-        } catch (SQLException ex){
+        } catch (SQLException ex) {
           ex.printStackTrace();
         }
         e.printStackTrace();
@@ -741,6 +755,7 @@ public class Query {
         // Check if the reservation exists
         if (!priceResultSet.next()) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "Cannot find unpaid reservation " + reservationId + " under user: " + username + "\n";
         }
 
@@ -761,6 +776,7 @@ public class Query {
         // Check if the price is greater than the user balance
         if (price > balance) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "User has only " + balance + " in account but itinerary costs " + price + "\n";
         }
 
@@ -781,12 +797,13 @@ public class Query {
 
       } catch (SQLException e) {
         try {
+          conn.rollback();
+          conn.setAutoCommit(true);
           // If the error is deadlock, then call this method recursively
           if (isDeadLock(e)){
-            conn.rollback();
             return transaction_pay(reservationId);
           }
-        } catch (SQLException ex){
+        } catch (SQLException ex) {
           ex.printStackTrace();
         }
         e.printStackTrace();
@@ -903,20 +920,23 @@ public class Query {
         // Check if the reservation does not exist
         if (sb.length() == 0) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "No reservations found\n";
         }
         conn.commit();
+        conn.setAutoCommit(true);
         // Return the StringBuffer that we built to string
         return sb.toString();
 
       } catch (SQLException e) {
         try {
+          conn.rollback();
+          conn.setAutoCommit(true);
           // If the error is deadlock, then call this method recursively
           if (isDeadLock(e)){
-            conn.rollback();
             return transaction_reservations();
           }
-        } catch (SQLException ex){
+        } catch (SQLException ex) {
           ex.printStackTrace();
         }
         e.printStackTrace();
@@ -956,11 +976,16 @@ public class Query {
         getReservationCancelStatement.setString(1, username);
         getReservationCancelStatement.setInt(2, reservationId);
         ResultSet cancelResultSet = getReservationCancelStatement.executeQuery();
-        cancelResultSet.next();
+        if (!cancelResultSet.next()) {
+          conn.rollback();
+          conn.setAutoCommit(true);
+          return "Failed to cancel reservation " + reservationId + "\n";
+        }
 
         // Check if the reservation is already canceled
         if (cancelResultSet.getInt("canceled") == 1) {
           conn.rollback();
+          conn.setAutoCommit(true);
           return "Failed to cancel reservation " + reservationId + "\n";
         }
 
@@ -990,22 +1015,23 @@ public class Query {
           updateUserBalanceStatement.executeUpdate();
         }
         conn.commit();
+        conn.setAutoCommit(true);
         return "Canceled reservation " + reservationId + "\n";
 
       } catch (SQLException e) {
         try {
+          conn.rollback();
+          conn.setAutoCommit(true);
           // If the error is deadlock, then call this method recursively
-          if (isDeadLock(e)){
-            conn.rollback();
+          if (isDeadLock(e)) {
             return transaction_cancel(reservationId);
           }
-        } catch (SQLException ex){
+        } catch (SQLException ex) {
           ex.printStackTrace();
         }
         e.printStackTrace();
         return "Failed to cancel reservation " + reservationId + "\n";
       }
-
     } finally {
       checkDanglingTransaction();
     }
